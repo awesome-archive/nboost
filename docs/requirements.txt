@@ -1,5 +1,9 @@
-requests
-httptools
-termcolor
+sphinx-argparse
+sphinxcontrib-apidoc
+sphinx-autodoc-typehints
+sphinx-markdown-tables
 elasticsearch
 tqdm
+termcolor
+numpy
+httptools

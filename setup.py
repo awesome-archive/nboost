@@ -6,7 +6,7 @@ setup(
     name='nboost',
     packages=find_packages(),
     include_package_data=True,
-    version=__version__,
+    version=__version__.__doc__,
     license='Apache 2.0',
     description='Nboost is a scalable, search-'
                 'api-boosting platform for developing and deploying '
@@ -29,17 +29,17 @@ setup(
         'requests',
         'elasticsearch',
         'tqdm',
-        'httptools'
+        'httptools',
+        'jsonpath-ng'
     ],
     extras_require={
-        'torch': ['torch', 'transformers'],
+        'pt': ['torch', 'transformers==2.2.1'],
         'tf': ['tensorflow==1.15', 'sentencepiece'],
-        'all': ['torch', 'tensorflow==1.15', 'transformers'],
+        'all': ['torch', 'tensorflow==1.15', 'transformers==2.2.1'],
     },
     entry_points={'console_scripts': [
         'nboost=nboost.__main__:main',
-        'nboost-tutorial=nboost.tutorial.__main__:main',
-        'nboost-benchmark=nboost.benchmark.__main__:main'
+        'nboost-index=nboost.indexers.__main__:main'
     ]},
     classifiers=[
         'Intended Audience :: Education',

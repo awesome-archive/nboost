@@ -1,10 +1,70 @@
-from nboost.proxy import SocketServer
-from nboost.cli import create_proxy
-import requests
-import json as JSON
-import unittest
 
-DATA = JSON.dumps({
+from pprint import pprint
+import unittest
+import requests
+from nboost.helpers import prepare_response, dump_json
+from nboost.server import SocketServer
+from nboost.session import Session
+from nboost.proxy import Proxy
+
+
+class TestServer(SocketServer):
+    def loop(self, client_socket, address):
+        session = Session()
+        session.response['body'] = dump_json(RESPONSE)
+        prepared_response = prepare_response(session.response)
+        client_socket.send(prepared_response)
+        client_socket.close()
+
+
+class TestProxy(unittest.TestCase):
+    def test_proxy(self):
+        server = TestServer(port=9500, verbose=True)
+        proxy = Proxy(model_dir='shuffle-model', model='ShuffleModel', uport=9500,
+                      verbose=True, query_prep='lambda query: query.split(";")[-1]')
+        proxy.start()
+        server.start()
+        proxy.is_ready.wait()
+        server.is_ready.wait()
+
+        # search
+        proxy_res = requests.get(
+            'http://localhost:8000/test/_search',
+            params={
+                'q': 'test_field;test query',
+                'size': 3,
+                'debug': True,
+                'topn': 20
+            }
+        )
+        self.assertTrue(proxy_res.ok)
+        pprint(proxy_res.json())
+        session = proxy_res.json()['nboost']
+        self.assertEqual('test query', session['query'])
+        self.assertEqual(3, session['topk'])
+        self.assertEqual(20, session['topn'])
+        self.assertEqual(3, len(session['cvalues']))
+
+        # fallback
+        server_res = requests.get('http://localhost:9500/test')
+        print(server_res.content)
+        self.assertTrue(server_res.ok)
+
+        # status
+        status_res = requests.get('http://localhost:8000/nboost/status')
+        self.assertTrue(status_res.ok)
+        print(status_res.content.decode())
+
+        # invalid host
+        invalid_res = requests.get('http://localhost:8000', params={'uport': 2000})
+        print(invalid_res.content)
+        self.assertFalse(invalid_res.ok)
+
+        proxy.close()
+        server.close()
+
+
+RESPONSE = {
     "took": 5,
     "timed_out": False,
     "_shards": {
@@ -24,83 +84,28 @@ DATA = JSON.dumps({
                 "_index": "twitter",
                 "_type": "_doc",
                 "_id": "0",
-                "_score": 1.3862944,
+                "_score": 1.4,
                 "_source": {
-                    "date": "2009-11-15T14:12:12",
-                    "likes": 0,
                     "message": "trying out Elasticsearch",
-                    "user": "kimchy"
                 }
             }, {
                 "_index": "twitter",
                 "_type": "_doc",
-                "_id": "0",
-                "_score": 1.3862944,
+                "_id": "1",
+                "_score": 1.34245,
                 "_source": {
-                    "date": "2009-11-15T14:12:12",
-                    "likes": 0,
-                    "message": "second choice",
-                    "user": "kimchy"
+                    "message": "second result",
+                }
+            },
+            {
+                "_index": "twitter",
+                "_type": "_doc",
+                "_id": "2",
+                "_score": 1.121234,
+                "_source": {
+                    "message": "third result",
                 }
             }
         ]
     }
-}).encode()
-RESPONSE = b'HTTP/1.1 200 OK\r\nContent-Length: %s\r\n\r\n' % str(len(DATA)).encode()
-RESPONSE += DATA
-
-
-class TestServer(SocketServer):
-    def loop(self, client_socket, address):
-        client_socket.send(RESPONSE)
-        client_socket.close()
-
-
-class TestProxy(unittest.TestCase):
-    def test_default_proxy(self):
-
-        server = TestServer(port=9500, verbose=True)
-        proxy = create_proxy([
-            '--port', '8000',
-            '--model', 'TestModel',
-            '--field', 'message',
-            '--uport', '9500',
-            '--verbose'
-        ])
-        proxy.start()
-        server.start()
-        proxy.is_ready.wait()
-        server.is_ready.wait()
-
-        # search
-        params = dict(size=5, q='test:test query', pretty='')
-
-        proxy_res = requests.get('http://localhost:8000/mock_index/_search', params=params)
-        print(proxy_res.content)
-        proxy_json = proxy_res.json()
-        self.assertTrue(proxy_res.ok)
-        self.assertIn('_nboost', proxy_json)
-
-        server_res = requests.get('http://localhost:9500/mock_index/_search', params=params)
-        print(server_res.content)
-        self.assertTrue(server_res.ok)
-
-        # fallback
-        fallback_res = requests.post('http://localhost:8000/only_on_server',
-                                     data=b'hello there my friend')
-        print('fallback:', fallback_res.content)
-        self.assertTrue(fallback_res.ok)
-
-        # status
-        status_res = requests.get('http://localhost:8000/nboost')
-        self.assertTrue(status_res.ok)
-        print(status_res.content.decode())
-
-        # invalid host
-        proxy.uaddress = ('localhost', 2000)
-        invalid_res = requests.get('http://localhost:8000')
-        print(invalid_res.content)
-        self.assertFalse(invalid_res.ok)
-
-        proxy.close()
-        server.close()
+}
